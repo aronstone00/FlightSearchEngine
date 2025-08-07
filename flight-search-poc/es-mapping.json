@@ -1,0 +1,13 @@
+{
+  "mappings": {
+    "properties": {
+      "id":             { "type": "keyword" },
+      "airline":        { "type": "keyword" },
+      "departureCity":  { "type": "keyword", "normalizer": "lowercase" },
+      "arrivalCity":    { "type": "keyword", "normalizer": "lowercase" },
+      "departureTime":  { "type": "date" },
+      "basePrice":      { "type": "double" }
+    }
+  }
+}
+

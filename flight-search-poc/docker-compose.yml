@@ -1,0 +1,72 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: fs-postgres
+    environment:
+      POSTGRES_DB: flights_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.19
+    container_name: fs-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=true
+      - ELASTIC_PASSWORD=changeme
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - "9200:9200"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - |
+          curl -s -u elastic:changeme http://localhost:9200/_cluster/health \
+          | grep -q '"status"' || exit 1
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  app:
+    build: .
+    container_name: flight-search-poc
+    depends_on:
+      postgres:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      # PostgreSQL
+      PG_URL: jdbc:postgresql://postgres:5432/flights_db
+      PG_USERNAME: postgres
+      PG_PASSWORD: secret
+      # Elasticsearch
+      ES_HOST: elasticsearch
+      ES_PORT: 9200
+      ES_USERNAME: elastic
+      ES_PASSWORD: changeme
+      # Optional: Tell ingestion to call search directly (same JVM)
+      SEARCH_SERVICE_URL: http://localhost:8080
+    ports:
+      - "8080:8080"
+
+volumes:
+  pgdata:
+  esdata:

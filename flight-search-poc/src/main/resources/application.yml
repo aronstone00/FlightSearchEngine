@@ -1,0 +1,29 @@
+# Central application configuration (single-jar mode)
+# Defaults suitable for local development; override via ENV vars or --args
+
+server:
+  port: 8080
+
+spring:
+  datasource:
+    url: ${PG_URL}
+    username: ${PG_USERNAME}
+    password: ${PG_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+
+search:
+  service:
+    url: http://localhost:${server.port}
+
+elasticsearch:
+  host: "localhost"
+  port: "9200"
+  username: "pass"
+  password: "pass"
+
