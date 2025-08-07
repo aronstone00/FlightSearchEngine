@@ -1,7 +1,3 @@
-Here's a well-structured and professional `README.md` version of your write-up:
-
----
-
 # ✈️ Flight Search POC – An AI-Driven Development Journey 🤖
 
 ## 🚀 Overview
