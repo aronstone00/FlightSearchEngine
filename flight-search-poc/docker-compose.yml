@@ -10,6 +10,7 @@ services:
       POSTGRES_PASSWORD: secret
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
     ports:
       - "5432:5432"
     healthcheck:
@@ -58,10 +59,10 @@ services:
       PG_USERNAME: postgres
       PG_PASSWORD: secret
       # Elasticsearch
-      ES_HOST: elasticsearch
-      ES_PORT: 9200
-      ES_USERNAME: elastic
-      ES_PASSWORD: changeme
+      ELASTICSEARCH_HOST: elasticsearch
+      ELASTICSEARCH_PORT: 9200
+      ELASTICSEARCH_USERNAME: elastic
+      ELASTICSEARCH_PASSWORD: changeme
       # Optional: Tell ingestion to call search directly (same JVM)
       SEARCH_SERVICE_URL: http://localhost:8080
     ports:

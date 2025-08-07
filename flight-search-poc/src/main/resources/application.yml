@@ -22,8 +22,8 @@ search:
     url: http://localhost:${server.port}
 
 elasticsearch:
-  host: "localhost"
-  port: "9200"
-  username: "pass"
-  password: "pass"
+  host: ${ELASTICSEARCH_HOST}
+  port: ${ELASTICSEARCH_PORT}
+  username: ${ELASTICSEARCH_USERNAME}
+  password: ${ELASTICSEARCH_PASSWORD}
 

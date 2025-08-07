@@ -49,7 +49,7 @@ public class FlightService {
 
     // If SearchService bean is present in the same JVM (single-jar mode) call it directly – skips HTTP.
     if (directSearchService != null) {
-      directSearchService.index(toSearchDto(dto));
+      retry(() -> directSearchService.index(toSearchDto(dto)));
     } else {
       // Otherwise POST to the separate Search Service (micro-service mode)
       retry(() -> indexIntoSearch(dto));
@@ -84,7 +84,7 @@ public class FlightService {
         } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
       }
     }
-    LOG.error("Failed to index flight after {} attempts", MAX_RETRIES);
+    LOG.error("Failed to index flight after {} attempts – continuing without rollback", MAX_RETRIES);
   }
 
   private FlightEntity toEntity(FlightDTO dto) {

@@ -1,129 +1,101 @@
-# Flight Search POC
+# Flight Search POC – Docker-ready
 
-Minimal two-microservice proof-of-concept that ingests flight information into PostgreSQL and indexes it in Elasticsearch so that clients can perform fast, paginated & sorted searches.
-
-```
-Clients → Ingestion Service (PostgreSQL)
-          ↘ POST to Search Service → Elasticsearch
-                                  ↘ Clients
-```
-
-## Modules
-
-| Module | Description | Port |
-|--------|-------------|------|
-| **ingestion-service** | Validates & persists flights to Postgres and forwards the payload to Search Service. | **8081** |
-| **search-service**    | Idempotently upserts documents into Elasticsearch and exposes a `/search` API. | **8082** |
-
-## Quick-start
-
-1. Clone & open the project.
-2. Copy `.env.example` → `.env` and adjust credentials.
-3. Build everything once (downloads dependencies):
-
-   ```bash
-   mvn -pl ingestion-service,search-service -am clean package
-   ```
-
-4. Apply DB & ES artifacts (**one-off**):
-
-   ```bash
-   psql $PG_URL -U $PG_USERNAME -f migrations/V1__create_flights_table.sql
-
-   curl -X PUT "http://${ES_HOST}:${ES_PORT}/flights" \
-        -u ${ES_USERNAME}:${ES_PASSWORD} \
-        -H 'Content-Type: application/json' \
-        -d @es-mapping.json
-   ```
-
-5. Run the services (in separate shells / terminals):
-
-   ```bash
-   cd ingestion-service && mvn spring-boot:run
-   cd ../search-service && mvn spring-boot:run
-   ```
-
-6. Smoke test:
-
-   ```bash
-   curl -X POST http://localhost:8081/api/v1/flights \
-     -H 'Content-Type: application/json' \
-     -d '{"flightId":"AI-101","airline":"Air India","departureCity":"DEL","arrivalCity":"BOM","departureTime":"2025-08-10T06:30:00Z","basePrice":5499.00}'
-
-   curl "http://localhost:8082/api/v1/search?departureCity=DEL&arrivalCity=BOM&departureDate=2025-08-10"
-   ```
-
-## Configuration Reference
-
-All runtime config lives in `application.yml` files and can be overridden via environment variables. A convenient `.env.example` template is provided.
-
-Ingestion Service (`src/main/resources/application.yml`):
+A minimal proof-of-concept that ingests flight information into **PostgreSQL** and indexes it into **Elasticsearch** so that clients can perform fast, paginated & sorted searches – all shipped as a **single Spring-Boot JAR** and a **one-command `docker-compose` stack**.
 
 ```
-spring:
-  datasource:
-    url: ${PG_URL}
-    username: ${PG_USERNAME}
-    password: ${PG_PASSWORD}
-server:
-  port: 8081
-search.service.url: ${SEARCH_SERVICE_URL:http://localhost:8082}
+Clients  ──▶  Flight-Search-POC (Java) ──▶ PostgreSQL (write / read)
+                            └────▶ Elasticsearch  (index / search) ──▶ Clients
 ```
 
-Search Service (`src/main/resources/application.yml`):
+## 1  Run with Docker 🐳
 
-```
-elasticsearch:
-  host: ${ES_HOST}
-  port: ${ES_PORT}
-  username: ${ES_USERNAME}
-  password: ${ES_PASSWORD}
-server:
-  port: 8082
+```bash
+# clone repository then:
+cd flight-search-poc
+
+docker-compose up --build   # first run compiles the JAR, then starts PG + ES + app
 ```
 
-## API Reference
+* `localhost:8080/swagger-ui/index.html` – interactive API docs
+* `localhost:5432` – Postgres (`postgres/secret`, DB `flights_db`)
+* `localhost:9200` – Elasticsearch (`elastic/changeme`)
 
-### Ingestion Service
+Stop & remove:
 
-| Verb | Path | Description |
-|------|------|-------------|
-| `POST` | `/api/v1/flights` | Persist & index a flight. **201** Created / **400** Validation / **409** Duplicate |
-| `GET`  | `/api/v1/flights/{flightId}` | Retrieve a flight. **200** / **404** |
-
-### Search Service
-
-| Verb | Path | Description |
-|------|------|-------------|
-| `POST` | `/api/v1/index/flight` | Idempotent upsert (called by Ingestion Service). |
-| `GET`  | `/api/v1/search` | `?departureCity=&arrivalCity=&departureDate=&page=&size=&sort=` |
-
-Example search:
-
-```
-GET /api/v1/search?departureCity=DEL&arrivalCity=BOM&departureDate=2025-08-10&page=0&size=5&sort=basePrice,asc
+```bash
+docker-compose down          # keep data volumes
+# or
+docker-compose down -v       # also wipe Postgres & ES data
 ```
 
-## Acceptance Criteria
+### Environment mapping (handled by compose)
 
-1. Given 3 flights on same route & date with prices **1000, 500, 1500** ⇒ `/search` returns `[500,1000,1500]`.
-2. A new flight becomes searchable immediately after POST (POC synchronous indexing).
+| Spring property                     | compose env-var              | example value          |
+|------------------------------------|------------------------------|------------------------|
+| `PG_URL` / `PG_USERNAME` / `PG_PASSWORD` | set for Postgres service   | `jdbc:postgresql://postgres:5432/flights_db` |
+| `ELASTICSEARCH_HOST` / `ELASTICSEARCH_PORT` | internal DNS + port       | `elasticsearch` / `9200` |
+| `ELASTICSEARCH_USERNAME` / `ELASTICSEARCH_PASSWORD` | `elastic` / `changeme` | – |
 
----
+The app waits for both containers to become **healthy**, then starts.
 
-### Notes & Call-outs
+## 2  Local JVM (no Docker)
 
-* **Idempotency**: Duplicate `flightId` rejected at write-time; Search Service uses the same `flightId` as ES document id (upsert).
-* **Retries**: Ingestion Service retries the index call 3× with exponential back-off; failures are logged but DB transaction is not rolled back (non-blocking write-behind semantics).
-* **Extensibility**: Swapping out direct REST with Kafka is trivial – publish an event after commit instead of `RestTemplate`.
-* **Observability**: Spring Actuator exposes `/actuator/health`, logs include request timing via simple `StopWatch`.
-* **Version Compatibility**: ES 7.17 client is used because it’s compatible with both 7.x & most 8.x clusters in *compat* mode.
+You can still run directly:
 
-# Build the JAR
+```bash
 mvn clean package
+java -jar target/flight-search-poc-1.0.0.jar \
+  --PG_URL=jdbc:postgresql://localhost:5432/flights_db \
+  --PG_USERNAME=postgres --PG_PASSWORD=secret \
+  --ELASTICSEARCH_HOST=localhost --ELASTICSEARCH_PORT=9200 \
+  --ELASTICSEARCH_USERNAME=elastic --ELASTICSEARCH_PASSWORD=changeme
+```
 
-# Run the unified application (will start on port 8080)
-java -jar target/flight-search-poc-1.0.0.jar
+Create the DB table & ES index once:
 
-# Or run with Maven
-mvn spring-boot:run
+```bash
+psql $PG_URL -U $PG_USERNAME -f migrations/V1__create_flights_table.sql
+curl -u $ELASTICSEARCH_USERNAME:$ELASTICSEARCH_PASSWORD \
+     -H 'Content-Type: application/json' \
+     -X PUT "http://$ELASTICSEARCH_HOST:$ELASTICSEARCH_PORT/flights" \
+     -d @es-mapping.json
+```
+
+## 3  Sample workflow
+
+```bash
+# ingest three flights
+airports=(1500 500 1000)
+for i in ${!airports[@]}; do
+  curl -X POST http://localhost:8080/api/v1/flights -H 'Content-Type: application/json' -d "{\
+    \"flightId\":\"T-00$((i+1))\",\
+    \"airline\":\"Demo\",\
+    \"departureCity\":\"BLR\",\
+    \"arrivalCity\":\"MOUM\",\
+    \"departureTime\":\"2025-08-07T0$((i+3)):00:00Z\",\
+    \"basePrice\":${airports[$i]} }"
+done
+
+# verify search ordered by price asc
+curl 'http://localhost:8080/api/v1/search?departureCity=BLR&arrivalCity=MOUM&departureDate=2025-08-07&sort=basePrice,asc' | jq '.content | map({flightId,basePrice})'
+```
+
+Expected response:
+
+```json
+[
+  { "flightId": "T-002", "basePrice": 500.0 },
+  { "flightId": "T-003", "basePrice": 1000.0 },
+  { "flightId": "T-001", "basePrice": 1500.0 }
+]
+```
+
+## 4  Tech highlights
+
+* **Idempotency** – `flightId` is unique in Postgres and reused as ES doc-id (`upsert`).
+* **Retry** – Ingestion retries ES indexing 3× with exponential back-off (covers initial container warm-up).
+* **Observability** – `/healthz` liveness plus Spring Actuator `/actuator/health`, structured logs.
+* **OpenAPI** – Swagger UI included via springdoc-openapi.
+* **Single-jar** dev mode, yet still split logically into *ingestion* and *search* packages.
+
+Enjoy exploring ✈️
