@@ -147,7 +147,3 @@ This project exemplifies:
 
 > *AI accelerates execution. Humans shape the vision.*
 > This is the future of software development.
-
----
-
-Let me know if you want me to generate a `README.md` file you can download directly.
